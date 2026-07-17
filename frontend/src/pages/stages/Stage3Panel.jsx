@@ -81,7 +81,7 @@ export default function Stage3Panel({ familyId, detail, reload }) {
         ))}
       </div>
 
-      {!isCompleted && data.responses.length > 0 && (
+      {!isCompleted && (
         <button onClick={calculate} disabled={calculating} className="btn-primary w-full">
           {calculating ? 'Рассчитываем…' : 'Рассчитать предварительный ИОП и перейти к контракту'}
         </button>

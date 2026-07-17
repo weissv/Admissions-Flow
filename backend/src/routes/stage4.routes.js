@@ -54,10 +54,6 @@ router.get(
 router.post(
   '/:familyId/sign',
   asyncHandler(async (req, res) => {
-    const { rows } = await pool.query('SELECT generated_file FROM family_contracts WHERE family_id = $1', [req.params.familyId]);
-    if (!rows[0]?.generated_file) {
-      return res.status(400).json({ error: 'Сначала сформируйте договор.' });
-    }
     await markContractSigned(req.params.familyId);
     const result = await completeStage(req.params.familyId, 4);
     res.json({ ...result, family: await getFamily(req.params.familyId) });

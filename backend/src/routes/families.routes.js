@@ -47,14 +47,14 @@ router.post(
   asyncHandler(async (req, res) => {
     const { child_name, child_class, parents_info, call_tags = [], call_log = '', first_questions = [] } = req.body;
 
-    if (!child_name || !child_class || !parents_info) {
-      return res.status(400).json({ error: 'Укажите имя ребёнка, класс и контакты родителей.' });
-    }
+    const safeChildName = String(child_name || '').trim() || 'Без имени';
+    const safeChildClass = Number.isFinite(Number(child_class)) ? Number(child_class) : 0;
+    const safeParentsInfo = parents_info && typeof parents_info === 'object' ? parents_info : {};
 
     const { rows } = await pool.query(
       `INSERT INTO families (child_name, child_class, parents_info, stage0_data)
        VALUES ($1, $2, $3, $4) RETURNING *`,
-      [child_name, child_class, parents_info, { call_tags, call_log, first_questions, transcript: '' }]
+      [safeChildName, safeChildClass, JSON.stringify(safeParentsInfo), JSON.stringify({ call_tags, call_log, first_questions, transcript: '' })]
     );
     const family = rows[0];
 

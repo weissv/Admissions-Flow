@@ -51,10 +51,6 @@ export default function Stage5Panel({ familyId, detail, reload }) {
 
   async function review() {
     setError('');
-    if (!reviewerName.trim()) {
-      setError('Укажите имя проверяющего.');
-      return;
-    }
     setSaving(true);
     try {
       await api.post(`/stage5/${familyId}/review`, {

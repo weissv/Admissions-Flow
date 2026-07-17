@@ -65,10 +65,6 @@ router.post(
       `SELECT * FROM questionnaire_responses WHERE family_id = $1 AND stage_number = 3`,
       [req.params.familyId]
     );
-    if (rows.length === 0) {
-      return res.status(400).json({ error: 'Вечерняя рефлексия ещё не получена от семьи.' });
-    }
-
     const allText = rows.flatMap((r) => (r.q_and_a || []).map((qa) => qa.answer_text || '')).join(' ');
     const scaleAnswer = rows
       .flatMap((r) => r.q_and_a || [])
@@ -83,7 +79,7 @@ router.post(
        VALUES ($1, 3, 'Система (авто-анализ рефлексии)', $2, $3, TRUE)`,
       [
         req.params.familyId,
-        { self_reflection: finalScore, communication_constructiveness: finalScore },
+        JSON.stringify({ self_reflection: finalScore, communication_constructiveness: finalScore }),
         'Автоматически рассчитано на основе текста вечерней рефлексии.',
       ]
     );

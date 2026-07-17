@@ -43,10 +43,7 @@ router.post(
   '/:familyId/log',
   asyncHandler(async (req, res) => {
     await ensureStageInProgress(req.params.familyId, 6);
-    const { week_number, checklist_answers, notes = '', created_by } = req.body;
-    if (!week_number || !checklist_answers) {
-      return res.status(400).json({ error: 'Укажите номер недели и заполните чек-лист.' });
-    }
+    const { week_number = 1, checklist_answers = {}, notes = '', created_by = '' } = req.body;
 
     const { rows } = await pool.query(
       `INSERT INTO probation_weekly_logs (family_id, week_number, checklist_answers, notes, created_by)
@@ -65,11 +62,11 @@ router.post(
       [
         req.params.familyId,
         created_by || 'Куратор',
-        {
+        JSON.stringify({
           boundary_keeping: weekScore,
           communication_constructiveness: weekScore,
           workload_tolerance: weekScore,
-        },
+        }),
         notes,
       ]
     );
@@ -107,10 +104,6 @@ router.post(
 router.post(
   '/:familyId/complete',
   asyncHandler(async (req, res) => {
-    const { rows } = await pool.query('SELECT * FROM probation_weekly_logs WHERE family_id = $1', [req.params.familyId]);
-    if (rows.length === 0) {
-      return res.status(400).json({ error: 'Добавьте хотя бы один недельный отчёт перед завершением испытательного срока.' });
-    }
     const family = await getFamily(req.params.familyId);
     const statuses = { ...family.stage_statuses, 6: 'Completed' };
     await pool.query('UPDATE families SET stage_statuses = $1, updated_at = NOW() WHERE id = $2', [statuses, req.params.familyId]);

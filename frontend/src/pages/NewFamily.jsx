@@ -85,11 +85,11 @@ export default function NewFamily() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Имя ребёнка</label>
-                <input className="input" required value={form.child_name} onChange={(e) => set('child_name', e.target.value)} />
+                <input className="input" value={form.child_name} onChange={(e) => set('child_name', e.target.value)} />
               </div>
               <div>
                 <label className="label">Целевой класс</label>
-                <input className="input" type="number" min="0" max="11" required value={form.child_class} onChange={(e) => set('child_class', e.target.value)} />
+                <input className="input" type="number" min="0" max="11" value={form.child_class} onChange={(e) => set('child_class', e.target.value)} />
               </div>
             </div>
           </div>
@@ -131,9 +131,9 @@ export default function NewFamily() {
 
           <div className="card p-5 space-y-4">
             <h2 className="font-semibold text-slate-800">Первые три вопроса родителей</h2>
-            <input className="input" placeholder="Вопрос 1" required value={form.q1} onChange={(e) => set('q1', e.target.value)} />
-            <input className="input" placeholder="Вопрос 2" required value={form.q2} onChange={(e) => set('q2', e.target.value)} />
-            <input className="input" placeholder="Вопрос 3" required value={form.q3} onChange={(e) => set('q3', e.target.value)} />
+            <input className="input" placeholder="Вопрос 1" value={form.q1} onChange={(e) => set('q1', e.target.value)} />
+            <input className="input" placeholder="Вопрос 2" value={form.q2} onChange={(e) => set('q2', e.target.value)} />
+            <input className="input" placeholder="Вопрос 3" value={form.q3} onChange={(e) => set('q3', e.target.value)} />
           </div>
 
           <button type="submit" disabled={loading} className="btn-primary w-full">

@@ -32,10 +32,6 @@ export default function Stage6Panel({ familyId, detail, reload }) {
 
   async function addLog() {
     setError('');
-    if (!createdBy.trim()) {
-      setError('Укажите имя куратора.');
-      return;
-    }
     setSaving(true);
     try {
       await api.post(`/stage6/${familyId}/log`, {
@@ -115,7 +111,7 @@ export default function Stage6Panel({ familyId, detail, reload }) {
         </div>
       )}
 
-      {!isCompleted && logs.length > 0 && (
+      {!isCompleted && (
         <button onClick={complete} disabled={saving} className="btn-primary w-full">Завершить испытательный срок</button>
       )}
     </div>

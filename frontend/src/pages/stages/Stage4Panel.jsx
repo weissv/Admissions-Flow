@@ -111,7 +111,7 @@ export default function Stage4Panel({ familyId, detail, reload }) {
         </div>
       )}
 
-      {!isCompleted && downloadUrl && (
+      {!isCompleted && (
         <button onClick={sign} disabled={saving} className="btn-primary w-full">
           <FileCheck size={16} /> Договор подписан. Запустить задание-тест
         </button>

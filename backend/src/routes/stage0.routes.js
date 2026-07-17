@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { v4 as uuidv4 } from 'uuid';
+
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
@@ -62,34 +62,15 @@ router.post(
   })
 );
 
-// ---- Complete Stage 0: generate Stage-1 links & unlock Stage 1 ---------
+// ---- Complete Stage 0: unlock Stage 1 without generating questionnaire links ----
 router.post(
   '/:familyId/complete',
   asyncHandler(async (req, res) => {
     const family = await getFamily(req.params.familyId);
     if (!family) return res.status(404).json({ error: 'Семья не найдена' });
 
-    const questions = family.stage0_data?.first_questions || [];
-    if (questions.filter(Boolean).length < 3) {
-      return res.status(400).json({ error: 'Заполните все 3 первых вопроса родителей перед завершением этапа.' });
-    }
-
     const result = await completeStage(req.params.familyId, 0);
-
-    const base = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const links = [];
-    for (const respondent of ['mother', 'father']) {
-      const token = uuidv4();
-      const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-      const { rows } = await pool.query(
-        `INSERT INTO access_links (family_id, token, stage_number, respondent_type, expires_at)
-         VALUES ($1, $2, 1, $3, $4) RETURNING *`,
-        [req.params.familyId, token, respondent, expiresAt]
-      );
-      links.push({ ...rows[0], url: `${base}/public/questionnaire/${token}` });
-    }
-
-    res.json({ ...result, links });
+    res.json(result);
   })
 );
 

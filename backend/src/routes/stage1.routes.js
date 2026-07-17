@@ -2,7 +2,7 @@ import express from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { pool } from '../db/pool.js';
-import { getFamily, completeStage, addRiskFlags } from '../services/familyService.js';
+import { getFamily, completeStage, addRiskFlags, ensureStageInProgress } from '../services/familyService.js';
 import { STAGE1_QUESTIONS } from '../constants/questionBanks.js';
 
 const router = express.Router();
@@ -47,6 +47,47 @@ router.get(
   })
 );
 
+router.post(
+  '/:familyId/manual-response',
+  asyncHandler(async (req, res) => {
+    await ensureStageInProgress(req.params.familyId, 1);
+
+    const { respondent_type = 'mother', answers = {} } = req.body;
+    const safeRespondentType = ['mother', 'father'].includes(respondent_type) ? respondent_type : 'mother';
+
+    const qAndA = [];
+    for (const question of STAGE1_QUESTIONS) {
+      const answer = answers[question.id];
+      const selectedOptionId = Number(answer?.selected_option_id);
+      const option = question.options.find((o) => o.id === selectedOptionId);
+      if (!option) continue;
+
+      qAndA.push({
+        question: question.question,
+        question_id: question.id,
+        selected_option_id: option.id,
+        weight: option.weight,
+        comment: answer?.comment || '',
+        entered_by_staff: true,
+      });
+    }
+
+    await pool.query(
+      `DELETE FROM questionnaire_responses
+       WHERE family_id = $1 AND stage_number = 1 AND respondent_type = $2`,
+      [req.params.familyId, safeRespondentType]
+    );
+
+    const { rows } = await pool.query(
+      `INSERT INTO questionnaire_responses (family_id, stage_number, respondent_type, q_and_a)
+       VALUES ($1, 1, $2, $3) RETURNING *`,
+      [req.params.familyId, safeRespondentType, JSON.stringify(qAndA)]
+    );
+
+    res.status(201).json(rows[0]);
+  })
+);
+
 // ---- Approve Stage 1 and unlock Stage 2 ---------------------------------
 router.post(
   '/:familyId/approve',
@@ -55,9 +96,6 @@ router.post(
       `SELECT * FROM questionnaire_responses WHERE family_id = $1 AND stage_number = 1`,
       [req.params.familyId]
     );
-    if (rows.length === 0) {
-      return res.status(400).json({ error: 'Нет ни одного заполненного ответа по Анкете 1.' });
-    }
 
     const motherRow = rows.find((r) => r.respondent_type === 'mother');
     const fatherRow = rows.find((r) => r.respondent_type === 'father');

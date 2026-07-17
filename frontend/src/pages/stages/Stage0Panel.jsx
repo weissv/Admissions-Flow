@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { api, apiErrorMessage } from '../../api/client.js';
 import Alert from '../../components/ui/Alert.jsx';
 import { STAGE0_TAGS } from '../../constants/stages.js';
-import { Mic, Square, Loader2, CheckCircle2, Copy } from 'lucide-react';
+import { Mic, Square, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 
 const TAG_COLORS = {
@@ -21,7 +21,6 @@ export default function Stage0Panel({ familyId, detail, reload }) {
   const [questions, setQuestions] = useState(stage0.first_questions || ['', '', '']);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [links, setLinks] = useState(null);
 
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -85,15 +84,10 @@ export default function Stage0Panel({ familyId, detail, reload }) {
 
   async function handleComplete() {
     setError('');
-    if (questions.filter((q) => q.trim()).length < 3) {
-      setError('Заполните все 3 первых вопроса родителей.');
-      return;
-    }
     setSaving(true);
     try {
       await saveDraft();
-      const { data } = await api.post(`/stage0/${familyId}/complete`);
-      setLinks(data.links);
+      await api.post(`/stage0/${familyId}/complete`);
       await reload();
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -106,11 +100,11 @@ export default function Stage0Panel({ familyId, detail, reload }) {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Этап 0. Первичный контакт</h1>
-        <p className="text-slate-500 text-sm">Зафиксируйте тон разговора и отправьте семье ссылку на Анкету 1.</p>
+        <p className="text-slate-500 text-sm">Зафиксируйте тон разговора. Следующий этап заполняется сотрудником вручную.</p>
       </div>
 
       {error && <Alert type="error">{error}</Alert>}
-      {isCompleted && <Alert type="success">Этап завершён. Анкета 1 отправлена родителям.</Alert>}
+      {isCompleted && <Alert type="success">Этап завершён. Открыт ручной ввод Анкеты 1.</Alert>}
 
       <div className="card p-5 space-y-3">
         <h2 className="font-semibold text-slate-800">Быстрые теги</h2>
@@ -171,29 +165,11 @@ export default function Stage0Panel({ familyId, detail, reload }) {
         <div className="flex gap-3">
           <button onClick={saveDraft} disabled={saving} className="btn-secondary">Сохранить черновик</button>
           <button onClick={handleComplete} disabled={saving} className="btn-primary flex-1">
-            {saving ? 'Отправляем…' : 'Сгенерировать ссылку на Анкету 1'}
+            {saving ? 'Завершаем…' : 'Завершить этап и открыть Анкету 1'}
           </button>
         </div>
       )}
 
-      {links && (
-        <div className="card p-5 space-y-3 border-emerald-200">
-          <div className="flex items-center gap-2 text-emerald-700 font-semibold">
-            <CheckCircle2 size={18} /> Ссылки на Анкету 1 сгенерированы
-          </div>
-          {links.map((l) => (
-            <div key={l.token} className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2">
-              <div>
-                <div className="text-xs uppercase text-slate-400">{l.respondent_type === 'mother' ? 'Мать' : 'Отец'}</div>
-                <div className="text-sm text-slate-700 break-all">{l.url}</div>
-              </div>
-              <button className="btn-outline !py-1.5 !px-2.5" onClick={() => navigator.clipboard.writeText(l.url)}>
-                <Copy size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

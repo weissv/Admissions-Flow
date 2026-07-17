@@ -52,30 +52,28 @@ router.post(
 router.post(
   '/:familyId/review',
   asyncHandler(async (req, res) => {
-    const { independence_score, honesty_score, quality_score, reviewer_name, reviewer_notes = '' } = req.body;
-    if ([independence_score, honesty_score, quality_score].some((v) => v === undefined || v === null)) {
-      return res.status(400).json({ error: 'Заполните все три шкалы оценки (0-4).' });
-    }
-    if (!reviewer_name) return res.status(400).json({ error: 'Укажите имя проверяющего.' });
+    const { independence_score = 0, honesty_score = 0, quality_score = 0, reviewer_name = '', reviewer_notes = '' } = req.body;
 
     const { rows } = await pool.query(
-      `UPDATE test_tasks SET independence_score = $1, honesty_score = $2, quality_score = $3,
-       reviewer_name = $4, reviewer_notes = $5, is_reviewed = TRUE WHERE family_id = $6 RETURNING *`,
-      [independence_score, honesty_score, quality_score, reviewer_name, reviewer_notes, req.params.familyId]
+      `INSERT INTO test_tasks (family_id, independence_score, honesty_score, quality_score, reviewer_name, reviewer_notes, is_reviewed)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+       ON CONFLICT (family_id) DO UPDATE SET independence_score = $2, honesty_score = $3, quality_score = $4,
+       reviewer_name = $5, reviewer_notes = $6, is_reviewed = TRUE
+       RETURNING *`,
+      [req.params.familyId, independence_score, honesty_score, quality_score, reviewer_name, reviewer_notes]
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'Задание-тест не найдено. Сначала загрузите работу.' });
 
     await pool.query(
       `INSERT INTO stage_evaluations (family_id, stage_number, evaluator_name, competency_scores, raw_notes, is_completed)
        VALUES ($1, 5, $2, $3, $4, TRUE)`,
       [
         req.params.familyId,
-        reviewer_name,
-        {
+        reviewer_name || 'Сотрудник',
+        JSON.stringify({
           child_subjectivity_support: independence_score,
           self_reflection: honesty_score,
           organization: quality_score,
-        },
+        }),
         reviewer_notes,
       ]
     );
