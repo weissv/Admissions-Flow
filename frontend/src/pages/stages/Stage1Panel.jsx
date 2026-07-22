@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, apiErrorMessage } from '../../api/client.js';
 import Alert from '../../components/ui/Alert.jsx';
 import Badge from '../../components/ui/Badge.jsx';
-import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, Link as LinkIcon, UserCheck } from 'lucide-react';
 
 export default function Stage1Panel({ familyId, detail, reload }) {
   const isCompleted = detail.family.stage_statuses['1'] === 'Completed';
@@ -11,6 +11,7 @@ export default function Stage1Panel({ familyId, detail, reload }) {
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
   const [respondentType, setRespondentType] = useState('mother');
+  const [targetGrade, setTargetGrade] = useState(detail.family.target_grade || '1-2');
   const [answers, setAnswers] = useState({});
 
   async function load() {
@@ -27,10 +28,18 @@ export default function Stage1Panel({ familyId, detail, reload }) {
       return;
     }
 
-    setAnswers(Object.fromEntries((existing.q_and_a || []).map((answer) => [
-      answer.question_id,
-      { selected_option_id: answer.selected_option_id, comment: answer.comment || '' },
-    ])));
+    setAnswers(
+      Object.fromEntries(
+        (existing.q_and_a || []).map((answer) => [
+          answer.question_id,
+          {
+            selected_option_id: answer.selected_option_id,
+            justification_text: answer.justification_text || answer.comment || '',
+            answer_text: answer.answer_text || '',
+          },
+        ])
+      )
+    );
   }, [data, respondentType]);
 
   function updateAnswer(questionId, patch) {
@@ -46,6 +55,7 @@ export default function Stage1Panel({ familyId, detail, reload }) {
     try {
       await api.post(`/stage1/${familyId}/manual-response`, {
         respondent_type: respondentType,
+        target_grade: targetGrade,
         answers,
       });
       await load();
@@ -71,89 +81,77 @@ export default function Stage1Panel({ familyId, detail, reload }) {
     }
   }
 
-  if (!data) return <div className="text-slate-400">Загрузка…</div>;
+  if (!data) return <div className="text-slate-400">Загрузка данных анкет…</div>;
+
+  const delta = data.delta || {};
+  const disagreements = delta.disagreements || [];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Этап 1. Анкета</h1>
-        <p className="text-slate-500 text-sm">Сотрудник вручную вносит ответы анкеты. Ссылки родителям не генерируются.</p>
+        <h1 className="text-2xl font-bold text-slate-900">Этап 1. Онлайн-знакомство и Двухродительский Дельта-анализ</h1>
+        <p className="text-slate-500 text-sm">
+          Сбор данных от Матери и Отца по 6 структурным блокам с 5 forced-choice SJT и автоматическим вычислением разногласий.
+        </p>
       </div>
 
       {error && <Alert type="error">{error}</Alert>}
-      {isCompleted && <Alert type="success">Анкета 1 утверждена. Семья приглашена на очную встречу.</Alert>}
+      {isCompleted && <Alert type="success">Анкета 1 утверждена. Семья допущена к очной встрече (Этап 2).</Alert>}
 
-      <div className="card p-5">
-        <h2 className="font-semibold text-slate-800 mb-3">Статус ручного ввода</h2>
-        <div className="grid grid-cols-2 gap-4">
+      {/* Submission status cards */}
+      <div className="card p-5 bg-white shadow-sm border border-slate-200">
+        <h2 className="font-semibold text-slate-800 text-base mb-3">Статус поступления анкет родителей</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {['mother', 'father'].map((r) => (
-            <div key={r} className="flex items-center gap-2">
-              {data.received[r] ? <CheckCircle2 className="text-emerald-500" size={18} /> : <XCircle className="text-slate-300" size={18} />}
-              <span className="text-sm">{r === 'mother' ? 'Мать' : 'Отец'}: {data.received[r] ? 'ответы внесены' : 'не внесены'}</span>
+            <div
+              key={r}
+              className={`flex items-center justify-between p-4 rounded-xl border ${
+                data.received[r] ? 'bg-emerald-50/70 border-emerald-200' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {data.received[r] ? <CheckCircle2 className="text-emerald-600" size={22} /> : <XCircle className="text-slate-400" size={22} />}
+                <div>
+                  <div className="font-semibold text-slate-800">{r === 'mother' ? 'Мать' : 'Отец'}</div>
+                  <div className="text-xs text-slate-500">{data.received[r] ? 'Анкета получена и обработана' : 'Ожидается отправка'}</div>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {!isCompleted && (
-        <div className="card p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold text-slate-800">Ручной ввод ответов</h2>
-            <select className="input max-w-[220px]" value={respondentType} onChange={(e) => setRespondentType(e.target.value)}>
-              <option value="mother">Мать</option>
-              <option value="father">Отец</option>
-            </select>
+      {/* Parent Delta Engine Warnings */}
+      {disagreements.length > 0 && (
+        <div className="card p-5 border-rose-200 bg-rose-50/50 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-rose-200 pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="text-rose-600" size={20} />
+              <h2 className="font-bold text-rose-900 text-base">
+                Delta Engine: Обнаружены разногласия родителей ({disagreements.length})
+              </h2>
+            </div>
+            <Badge color="red">RISK: Parent Alignment</Badge>
           </div>
 
-          <div className="space-y-5">
-            {data.questions.map((q) => (
-              <div key={q.id} className="border-b border-slate-100 pb-4 last:border-0">
-                <label className="label">{q.question}</label>
-                <select
-                  className="input"
-                  value={answers[q.id]?.selected_option_id || ''}
-                  onChange={(e) => updateAnswer(q.id, { selected_option_id: Number(e.target.value) })}
-                >
-                  <option value="">Выберите вариант</option>
-                  {q.options.map((option) => (
-                    <option key={option.id} value={option.id}>{option.id}. {option.text}</option>
-                  ))}
-                </select>
-                {q.requires_comment && (
-                  <textarea
-                    className="input min-h-[70px] mt-2"
-                    placeholder="Комментарий"
-                    value={answers[q.id]?.comment || ''}
-                    onChange={(e) => updateAnswer(q.id, { comment: e.target.value })}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-
-          <button onClick={saveManualResponse} disabled={saving} className="btn-secondary w-full">
-            {saving ? 'Сохраняем…' : `Сохранить ответы: ${respondentType === 'mother' ? 'мать' : 'отец'}`}
-          </button>
-        </div>
-      )}
-
-      {data.disagreements.length > 0 && (
-        <div className="card p-5 border-amber-200">
-          <h2 className="font-semibold text-amber-700 flex items-center gap-2 mb-3">
-            <AlertTriangle size={18} /> Разногласия родителей ({data.disagreements.length})
-          </h2>
           <div className="space-y-4">
-            {data.disagreements.map((d) => (
-              <div key={d.question_id} className="rounded-xl bg-amber-50 p-4">
-                <div className="text-sm font-medium text-slate-800 mb-2">{d.question}</div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="bg-white rounded-lg p-3">
-                    <div className="text-xs text-slate-400 mb-1">Мать</div>
-                    <div>{d.mother.comment || `Вариант №${d.mother.selected_option_id}`}</div>
+            {disagreements.map((d, idx) => (
+              <div key={idx} className="bg-white rounded-xl p-4 border border-rose-200 shadow-2xs space-y-3">
+                <div className="text-sm font-semibold text-slate-800">{d.question}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div className="bg-emerald-50/60 rounded-lg p-3 border border-emerald-100">
+                    <div className="text-xs font-bold text-emerald-800 uppercase mb-1">Мать</div>
+                    <div className="text-slate-800 font-medium">Вариант #{d.mother.option_id} (Вес: {d.mother.weight})</div>
+                    {d.mother.justification && (
+                      <div className="text-xs text-slate-600 mt-1 italic">«{d.mother.justification}»</div>
+                    )}
                   </div>
-                  <div className="bg-white rounded-lg p-3">
-                    <div className="text-xs text-slate-400 mb-1">Отец</div>
-                    <div>{d.father.comment || `Вариант №${d.father.selected_option_id}`}</div>
+                  <div className="bg-blue-50/60 rounded-lg p-3 border border-blue-100">
+                    <div className="text-xs font-bold text-blue-800 uppercase mb-1">Отец</div>
+                    <div className="text-slate-800 font-medium">Вариант #{d.father.option_id} (Вес: {d.father.weight})</div>
+                    {d.father.justification && (
+                      <div className="text-xs text-slate-600 mt-1 italic">«{d.father.justification}»</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -162,31 +160,75 @@ export default function Stage1Panel({ familyId, detail, reload }) {
         </div>
       )}
 
-      <div className="card p-5">
-        <h2 className="font-semibold text-slate-800 mb-3">Внесённые ответы</h2>
-        <div className="space-y-3">
-          {data.questions.map((q) => (
-            <div key={q.id} className="border-b border-slate-100 pb-3 last:border-0">
-              <div className="text-sm font-medium text-slate-700 mb-1">{q.question}</div>
-              <div className="flex gap-2 text-xs">
-                {['mother', 'father'].map((r) => {
-                  const resp = data.responses[r];
-                  const answer = resp?.q_and_a?.find((a) => a.question_id === q.id);
-                  return (
-                    <Badge key={r} color={answer ? 'blue' : 'slate'}>
-                      {r === 'mother' ? 'М' : 'О'}: {answer ? `в.${answer.selected_option_id} (вес ${answer.weight})` : '—'}
-                    </Badge>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
+      {/* Manual Input Section */}
       {!isCompleted && (
-        <button onClick={approve} disabled={approving} className="btn-primary w-full">
-          {approving ? 'Утверждаем…' : 'Утвердить Анкету 1 и перейти к Этапу 2'}
+        <div className="card p-5 space-y-4 bg-white shadow-sm border border-slate-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b pb-3">
+            <h2 className="font-semibold text-slate-800 text-base">Ввод / Корректировка ответов сотрудником</h2>
+            <div className="flex items-center gap-3">
+              <select
+                className="input max-w-[180px] font-semibold text-slate-800"
+                value={respondentType}
+                onChange={(e) => setRespondentType(e.target.value)}
+              >
+                <option value="mother">Мать</option>
+                <option value="father">Отец</option>
+              </select>
+
+              <select
+                className="input max-w-[180px]"
+                value={targetGrade}
+                onChange={(e) => setTargetGrade(e.target.value)}
+              >
+                {(data.age_groups || []).map((ag) => (
+                  <option key={ag.id} value={ag.id}>{ag.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {data.questions.map((q) => (
+              <div key={q.id} className="border-b border-slate-100 pb-4 last:border-0 space-y-2">
+                <label className="text-sm font-semibold text-slate-800">{q.question}</label>
+
+                {q.options && (
+                  <select
+                    className="input"
+                    value={answers[q.id]?.selected_option_id || ''}
+                    onChange={(e) => updateAnswer(q.id, { selected_option_id: Number(e.target.value) })}
+                  >
+                    <option value="">Выберите вариант ответа SJT</option>
+                    {q.options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        [{option.weight} балла] {option.id}. {option.text}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {(q.requires_justification || q.type === 'open') && (
+                  <textarea
+                    className="input min-h-[70px]"
+                    placeholder="Обоснование выбора или открытый ответ…"
+                    value={answers[q.id]?.justification_text || answers[q.id]?.answer_text || ''}
+                    onChange={(e) => updateAnswer(q.id, { justification_text: e.target.value, answer_text: e.target.value })}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button onClick={saveManualResponse} disabled={saving} className="btn-secondary w-full py-2.5">
+            {saving ? 'Сохраняем…' : `Сохранить ответы: ${respondentType === 'mother' ? 'Мать' : 'Отец'}`}
+          </button>
+        </div>
+      )}
+
+      {/* Action to approve */}
+      {!isCompleted && (
+        <button onClick={approve} disabled={approving} className="btn-primary w-full py-3.5 text-base font-semibold shadow-sm">
+          {approving ? 'Утверждаем анкету…' : 'Утвердить Анкету 1 и сгенерировать брифинг для Этапа 2'}
         </button>
       )}
     </div>

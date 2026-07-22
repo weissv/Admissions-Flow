@@ -3,12 +3,13 @@ import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { pool } from '../db/pool.js';
 import { getFamily, completeStage, addRiskFlags, ensureStageInProgress } from '../services/familyService.js';
-import { STAGE1_QUESTIONS } from '../constants/questionBanks.js';
+import { computeParentDelta } from '../services/deltaService.js';
+import { STAGE1_QUESTIONS, STAGE1_BLOCKS, AGE_GROUPS } from '../constants/questionBanks.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
-// ---- Admin view: responses received + parental disagreements -----------
+// ---- Admin view: responses received + parental delta --------------------
 router.get(
   '/:familyId',
   asyncHandler(async (req, res) => {
@@ -17,59 +18,65 @@ router.get(
       [req.params.familyId]
     );
 
+    const { rows: deltaRows } = await pool.query(
+      `SELECT * FROM parent_deltas WHERE family_id = $1`,
+      [req.params.familyId]
+    );
+
     const byRespondent = {};
     for (const row of rows) byRespondent[row.respondent_type] = row;
 
-    const disagreements = [];
-    if (byRespondent.mother && byRespondent.father) {
-      const motherAnswers = Object.fromEntries((byRespondent.mother.q_and_a || []).map((a) => [a.question_id, a]));
-      const fatherAnswers = Object.fromEntries((byRespondent.father.q_and_a || []).map((a) => [a.question_id, a]));
-      for (const q of STAGE1_QUESTIONS) {
-        const m = motherAnswers[q.id];
-        const f = fatherAnswers[q.id];
-        if (m && f && m.selected_option_id !== f.selected_option_id) {
-          disagreements.push({
-            question_id: q.id,
-            question: q.question,
-            mother: m,
-            father: f,
-          });
-        }
-      }
+    let deltaResult = deltaRows[0] || null;
+    if (byRespondent.mother && byRespondent.father && !deltaResult) {
+      deltaResult = await computeParentDelta(req.params.familyId);
     }
 
     res.json({
+      blocks: STAGE1_BLOCKS,
       questions: STAGE1_QUESTIONS,
+      age_groups: AGE_GROUPS,
       responses: byRespondent,
       received: { mother: !!byRespondent.mother, father: !!byRespondent.father },
-      disagreements,
+      delta: deltaResult,
     });
   })
 );
 
+// ---- Manual entry by staff on behalf of parent --------------------------
 router.post(
   '/:familyId/manual-response',
   asyncHandler(async (req, res) => {
     await ensureStageInProgress(req.params.familyId, 1);
 
-    const { respondent_type = 'mother', answers = {} } = req.body;
+    const { respondent_type = 'mother', target_grade = '1-2', answers = {} } = req.body;
     const safeRespondentType = ['mother', 'father'].includes(respondent_type) ? respondent_type : 'mother';
 
     const qAndA = [];
     for (const question of STAGE1_QUESTIONS) {
       const answer = answers[question.id];
-      const selectedOptionId = Number(answer?.selected_option_id);
-      const option = question.options.find((o) => o.id === selectedOptionId);
-      if (!option) continue;
+      if (!answer) continue;
 
-      qAndA.push({
-        question: question.question,
-        question_id: question.id,
-        selected_option_id: option.id,
-        weight: option.weight,
-        comment: answer?.comment || '',
-        entered_by_staff: true,
-      });
+      if (question.type === 'sjt' || question.type === 'choice') {
+        const selectedOptionId = Number(answer.selected_option_id);
+        const option = (question.options || []).find((o) => o.id === selectedOptionId);
+        if (!option) continue;
+
+        qAndA.push({
+          question: question.question,
+          question_id: question.id,
+          selected_option_id: option.id,
+          weight: option.weight,
+          justification_text: answer.justification_text || answer.comment || '',
+          entered_by_staff: true,
+        });
+      } else {
+        qAndA.push({
+          question: question.question,
+          question_id: question.id,
+          answer_text: answer.answer_text || answer.comment || '',
+          entered_by_staff: true,
+        });
+      }
     }
 
     await pool.query(
@@ -79,12 +86,15 @@ router.post(
     );
 
     const { rows } = await pool.query(
-      `INSERT INTO questionnaire_responses (family_id, stage_number, respondent_type, q_and_a)
-       VALUES ($1, 1, $2, $3) RETURNING *`,
-      [req.params.familyId, safeRespondentType, JSON.stringify(qAndA)]
+      `INSERT INTO questionnaire_responses (family_id, stage_number, respondent_type, target_grade, q_and_a)
+       VALUES ($1, 1, $2, $3, $4) RETURNING *`,
+      [req.params.familyId, safeRespondentType, target_grade, JSON.stringify(qAndA)]
     );
 
-    res.status(201).json(rows[0]);
+    // Trigger delta computation if both parents submitted
+    const delta = await computeParentDelta(req.params.familyId);
+
+    res.status(201).json({ response: rows[0], delta });
   })
 );
 
@@ -92,28 +102,15 @@ router.post(
 router.post(
   '/:familyId/approve',
   asyncHandler(async (req, res) => {
-    const { rows } = await pool.query(
-      `SELECT * FROM questionnaire_responses WHERE family_id = $1 AND stage_number = 1`,
-      [req.params.familyId]
-    );
-
-    const motherRow = rows.find((r) => r.respondent_type === 'mother');
-    const fatherRow = rows.find((r) => r.respondent_type === 'father');
-    if (motherRow && fatherRow) {
-      const motherAnswers = Object.fromEntries((motherRow.q_and_a || []).map((a) => [a.question_id, a]));
-      const fatherAnswers = Object.fromEntries((fatherRow.q_and_a || []).map((a) => [a.question_id, a]));
-      const hasDisagreement = STAGE1_QUESTIONS.some(
-        (q) => motherAnswers[q.id] && fatherAnswers[q.id] && motherAnswers[q.id].selected_option_id !== fatherAnswers[q.id].selected_option_id
-      );
-      if (hasDisagreement) {
-        await addRiskFlags(req.params.familyId, ['PARENTAL_DISAGREEMENT'], {
-          PARENTAL_DISAGREEMENT: { stage: 1, quote: 'Разные ответы матери и отца на вопросы SJT', source: 'Анкета 1' },
-        });
-      }
+    const delta = await computeParentDelta(req.params.familyId);
+    if (delta.disagreements && delta.disagreements.length > 0) {
+      await addRiskFlags(req.params.familyId, ['PARENTAL_DISAGREEMENT', 'CHECK'], {
+        PARENTAL_DISAGREEMENT: { stage: 1, quote: 'Несогласованные позиции родителей в анкете 1', source: 'Анкета 1' },
+      });
     }
 
     const result = await completeStage(req.params.familyId, 1);
-    res.json({ ...result, family: await getFamily(req.params.familyId) });
+    res.json({ ...result, delta, family: await getFamily(req.params.familyId) });
   })
 );
 

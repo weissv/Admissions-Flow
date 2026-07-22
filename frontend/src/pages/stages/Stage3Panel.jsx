@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api, apiErrorMessage } from '../../api/client.js';
 import Alert from '../../components/ui/Alert.jsx';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import Badge from '../../components/ui/Badge.jsx';
+import { Moon, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export default function Stage3Panel({ familyId, detail, reload }) {
   const isCompleted = detail.family.stage_statuses['3'] === 'Completed';
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [calculating, setCalculating] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   async function load() {
     const { data } = await api.get(`/stage3/${familyId}`);
@@ -15,75 +16,90 @@ export default function Stage3Panel({ familyId, detail, reload }) {
   }
   useEffect(() => { load(); }, [familyId]);
 
-  async function calculate() {
+  async function approve() {
     setError('');
-    setCalculating(true);
+    setApproving(true);
     try {
-      await api.post(`/stage3/${familyId}/calculate`);
+      await api.post(`/stage3/${familyId}/approve`);
       await reload();
       await load();
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
-      setCalculating(false);
+      setApproving(false);
     }
   }
 
-  if (!data) return <div className="text-slate-400">Загрузка…</div>;
+  if (!data) return <div className="text-slate-400">Загрузка данных рефлексии…</div>;
 
-  const shift = data.analysis.shift;
-  const ShiftIcon = shift === null ? Minus : shift > 0.3 ? TrendingUp : shift < -0.3 ? TrendingDown : Minus;
+  const responses = data.responses?.q_and_a || [];
+  const delta = data.reflection_delta || {};
+  const shifts = delta.shifts || [];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Этап 3. Вечерняя рефлексия</h1>
-        <p className="text-slate-500 text-sm">Анализ сдвига тональности между Анкетой 1 и вечерней рефлексией.</p>
+        <h1 className="text-2xl font-bold text-slate-900">Этап 3. Вечерняя рефлексия и Reflection Delta</h1>
+        <p className="text-slate-500 text-sm">
+          Заполняется родителями дома в тихой обстановке после очной встречи. Фиксирует осмысление правил и зафиксированные сдвиги позиций.
+        </p>
       </div>
 
       {error && <Alert type="error">{error}</Alert>}
-      {isCompleted && <Alert type="success">Рефлексия обработана. Предварительный ИОП рассчитан.</Alert>}
+      {isCompleted && <Alert type="success">Вечерняя рефлексия принята и обработана. Открыт Контрактный контур (Этап 4).</Alert>}
 
-      <div className="card p-5">
-        <h2 className="font-semibold text-slate-800 mb-4">Анализ тональности</h2>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <div className="text-2xl font-bold text-slate-800">{data.analysis.stage1_score?.toFixed(2)}</div>
-            <div className="text-xs text-slate-500">Оценка на Этапе 1</div>
+      {/* Reflection Delta warning box */}
+      {shifts.length > 0 ? (
+        <div className="card p-5 border-amber-200 bg-amber-50/60 shadow-sm space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="text-amber-600" size={20} />
+            <h2 className="font-bold text-amber-900 text-base">Reflection Delta: Зафиксированы изменения позиций после очной встречи</h2>
           </div>
-          <div className="flex flex-col items-center justify-center">
-            <ShiftIcon size={28} className={shift > 0.3 ? 'text-emerald-500' : shift < -0.3 ? 'text-red-500' : 'text-slate-400'} />
-            <div className="text-xs text-slate-500 mt-1">{shift !== null ? shift.toFixed(2) : '—'}</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-800">{data.analysis.stage3_tone_score?.toFixed(2) ?? '—'}</div>
-            <div className="text-xs text-slate-500">Тон рефлексии</div>
+
+          <div className="space-y-3">
+            {shifts.map((s, idx) => (
+              <div key={idx} className="bg-white p-3.5 rounded-xl border border-amber-200 text-sm space-y-1">
+                <div className="font-bold text-slate-800">{s.topic}</div>
+                <div className="text-xs text-slate-500">На встрече (Этап 2): {s.stage2_promise}</div>
+                <div className="text-xs font-semibold text-rose-700">В вечерней рефлексии (Этап 3): {s.stage3_reflection}</div>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="text-center text-sm font-medium text-slate-700 mt-4">{data.analysis.interpretation}</div>
-      </div>
+      ) : (
+        <div className="card p-4 bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 font-medium text-sm">
+          <CheckCircle2 size={20} className="text-emerald-600" />
+          <span>Позиции вечерней рефлексии полностью совпадают со словесными договоренностями на очной встрече.</span>
+        </div>
+      )}
 
-      <div className="card p-5">
-        <h2 className="font-semibold text-slate-800 mb-3">Ответы семьи</h2>
-        {data.responses.length === 0 && <div className="text-sm text-slate-400">Ответ пока не получен.</div>}
-        {data.responses.map((r) => (
-          <div key={r.id} className="space-y-3">
-            {(r.q_and_a || []).map((qa) => {
-              const q = data.questions.find((x) => x.id === qa.question_id);
-              return (
-                <div key={qa.question_id} className="border-b border-slate-100 pb-3 last:border-0">
-                  <div className="text-sm font-medium text-slate-700 mb-1">{q?.question}</div>
-                  <div className="text-sm text-slate-600">{qa.answer_text ?? qa.weight}</div>
+      {/* Received Answers */}
+      <div className="card p-5 bg-white shadow-sm border border-slate-200 space-y-4">
+        <h2 className="font-bold text-slate-900 text-base border-b pb-2 flex items-center gap-2">
+          <Moon size={18} className="text-indigo-600" />
+          Ответы родителей в вечерней рефлексии
+        </h2>
+
+        {responses.length === 0 ? (
+          <div className="text-slate-400 text-sm italic">Ответы от семьи пока не поступали. Вы можете отправить родителям ссылку или заполнить данные вручную.</div>
+        ) : (
+          <div className="space-y-4">
+            {responses.map((qa, idx) => (
+              <div key={idx} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <div className="text-xs font-bold uppercase text-slate-500">Вопрос #{idx + 1}</div>
+                <div className="text-sm font-semibold text-slate-800">{qa.question}</div>
+                <div className="text-sm text-indigo-950 font-medium mt-1 bg-white p-2.5 rounded-lg border border-slate-200">
+                  {qa.answer_text || qa.justification_text || `Выбран вариант №${qa.selected_option_id}`}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       {!isCompleted && (
-        <button onClick={calculate} disabled={calculating} className="btn-primary w-full">
-          {calculating ? 'Рассчитываем…' : 'Рассчитать предварительный ИОП и перейти к контракту'}
+        <button onClick={approve} disabled={approving} className="btn-primary w-full py-3.5 text-base font-semibold shadow-sm">
+          {approving ? 'Обрабатываем рефлексию…' : 'Утвердить Этап 3 и перейти к переходу флагов в договор (Этап 4)'}
         </button>
       )}
     </div>
