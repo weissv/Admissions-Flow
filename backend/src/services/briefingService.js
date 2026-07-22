@@ -22,8 +22,37 @@ export async function generateStage2Briefing(familyId) {
 
   const agenda = [];
 
+  // Stage 0 Background Passport Object
+  const firstQuestions = stage0.first_questions || stage0Data.first_questions || [
+    { order: 1, text: '', category: 'price' },
+    { order: 2, text: '', category: 'rules' },
+    { order: 3, text: '', category: 'academic' },
+  ];
+
+  const stage0Passport = {
+    admin_name: stage0.admin_name || stage0Data.admin_name || 'Администратор',
+    contact_format: stage0.contact_format || stage0Data.contact_format || 'Phone',
+    applicant_identity: stage0.applicant_identity || stage0Data.applicant_identity || 'Mother',
+    trigger_quote: stage0.trigger_quote || stage0Data.trigger_quote || 'Не зафиксировано',
+    primary_motive: stage0.primary_motive || stage0Data.primary_motive || 'Качественное образование',
+    alternatives_considered: stage0.alternatives_considered || stage0Data.alternatives_considered || 'Частные школы',
+    first_questions,
+    dominant_pronoun: stage0.dominant_pronoun || stage0Data.dominant_pronoun || 'MyChild',
+    prev_school_tone: stage0.prev_school_tone || stage0Data.prev_school_tone || 'Neutral',
+    blame_attribution: stage0.blame_attribution || stage0Data.blame_attribution || 'School',
+    family_responsibility_recognition: stage0.family_responsibility_recognition ?? stage0Data.family_responsibility_recognition ?? 2,
+    initial_indicators: stage0.initial_indicators || stage0Data.initial_indicators || {
+      request_clarity: 2,
+      educational_motivation: 2,
+      family_resource: 2,
+      communication_readiness: 2,
+      readiness_for_rules: 2,
+      initial_risk: 0,
+    },
+    admin_route: stage0.admin_route || stage0Data.admin_route || family.admin_route_recommendation || 'Standard Route',
+  };
+
   // Rule 1: First 3 Questions check (Price/Rules/Discipline triggers)
-  const firstQuestions = stage0.first_questions || stage0Data.first_questions || [];
   const priceQuestions = firstQuestions.filter((q) => q.category === 'price' || (q.text && q.text.toLowerCase().includes('стоимость')));
   if (priceQuestions.length > 0) {
     agenda.push({
@@ -37,7 +66,7 @@ export async function generateStage2Briefing(familyId) {
   }
 
   // Rule 2: Prev School Story check
-  if (stage0.prev_school_tone === 'Conflict' || stage0.blame_attribution === 'School') {
+  if (stage0Passport.prev_school_tone === 'Conflict' || stage0Passport.blame_attribution === 'School') {
     agenda.push({
       order: agenda.length + 1,
       category: 'Опыт прошлой школы',
@@ -117,7 +146,7 @@ export async function generateStage2Briefing(familyId) {
     child_name: family.child_name,
     child_class: family.child_class,
     target_grade: family.target_grade || '1-2',
-    admin_trigger: stage0.trigger_quote || stage0Data.trigger_quote || 'Не указано',
+    admin_trigger: stage0Passport.trigger_quote,
     first_questions: firstQuestions.map((q) => `${q.order || '#'}: ${q.text || q}`).join('; '),
     parent_delta_count: delta.disagreements ? delta.disagreements.length : 0,
     top_agenda_items: agenda.slice(0, 5),
@@ -137,5 +166,5 @@ export async function generateStage2Briefing(familyId) {
     [familyId, JSON.stringify(agenda), JSON.stringify(quickSheet)]
   );
 
-  return { agenda, quickSheet };
+  return { agenda, quickSheet, stage0Passport, delta };
 }

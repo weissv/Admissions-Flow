@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from 'recharts';
 import { api } from '../api/client.js';
 import Badge from '../components/ui/Badge.jsx';
-import { ArrowLeft, ChevronDown, ChevronUp, ShieldCheck, ShieldAlert, FileText, Award } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, ShieldCheck, ShieldAlert, AlertCircle, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { ROUTE_COLORS } from '../constants/stages.js';
 
@@ -100,47 +100,55 @@ export default function FamilyPassport() {
           </div>
         </div>
 
-        {/* Evidence Verification Audit Grid */}
+        {/* Evidence Verification Audit Grid (Soft Status Badges) */}
         <div className="card p-5 bg-white shadow-sm border border-slate-200 space-y-4">
           <h2 className="font-bold text-slate-900 text-base border-b pb-2 flex items-center gap-2">
             <ShieldCheck className="text-indigo-600" size={18} />
-            Доказательная верификация оценок (Обязательность 2 доказательств при крайних баллах)
+            Доказательная полнота компетенций (Методический статус доказуемости)
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {radar.map((c) => (
-              <div
-                key={c.key}
-                className={clsx(
-                  'p-3.5 rounded-xl border text-xs space-y-1',
-                  !c.hasSufficientProof
-                    ? 'border-rose-300 bg-rose-50/70 text-rose-950'
-                    : 'border-slate-200 bg-slate-50/60 text-slate-800'
-                )}
-              >
-                <div className="flex justify-between items-center">
-                  <span className="font-bold">{c.label}</span>
-                  <span className="font-extrabold text-sm">{c.score} / 4</span>
-                </div>
+            {radar.map((c) => {
+              const isVerified = c.proofCount >= 2;
 
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-slate-500">Источников доказательности: {c.proofCount}</span>
-                  {!c.hasSufficientProof ? (
-                    <Badge color="red">⚠️ Мало доказательств (&lt;2)</Badge>
-                  ) : (
-                    <Badge color="green">✓ Верифицировано</Badge>
+              return (
+                <div
+                  key={c.key}
+                  className={clsx(
+                    'p-3.5 rounded-xl border text-xs space-y-1.5',
+                    !isVerified
+                      ? 'border-amber-200 bg-amber-50/50 text-slate-800'
+                      : 'border-emerald-200 bg-emerald-50/50 text-slate-800'
+                  )}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-slate-900">{c.label}</span>
+                    <span className="font-extrabold text-sm text-indigo-700">{c.score} / 4</span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-0.5">
+                    <span className="text-slate-500">Зафиксированных цитат/фактов: {c.proofCount}</span>
+                    {isVerified ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                        <Check size={12} /> Подтверждено фактами (≥2)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                        <AlertCircle size={12} /> Рекомендуется добавить еще факты/цитаты
+                      </span>
+                    )}
+                  </div>
+
+                  {c.proofs && c.proofs.length > 0 && (
+                    <div className="mt-1 space-y-1 text-slate-600 italic">
+                      {c.proofs.map((p, i) => (
+                        <div key={i} className="line-clamp-1">«{p}»</div>
+                      ))}
+                    </div>
                   )}
                 </div>
-
-                {c.proofs && c.proofs.length > 0 && (
-                  <div className="mt-1 space-y-1 text-slate-600 italic">
-                    {c.proofs.map((p, i) => (
-                      <div key={i} className="line-clamp-1">«{p}»</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
